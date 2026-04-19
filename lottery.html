@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>幸运数字 36 </title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&display=swap');
+
+        body {
+            background-color: #7f1d1d;
+            font-family: 'ZCOOL KuaiLe', cursive, sans-serif;
+            overflow-x: hidden;
+        }
+
+        .number-grid {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 8px;
+        }
+
+        .number-slot {
+            perspective: 1000px;
+            aspect-ratio: 1 / 1;
+        }
+
+        .slot-inner {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            text-align: center;
+            transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+            transform-style: preserve-3d;
+            cursor: pointer;
+        }
+
+        .number-slot.flipped .slot-inner {
+            transform: rotateY(180deg);
+        }
+
+        .slot-front, .slot-back {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            backface-visibility: hidden;
+            -webkit-backface-visibility: hidden; 
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+            border: 2px solid #fbbf24;
+        }
+
+        .slot-front {
+            background: linear-gradient(135deg, #ef4444, #b91c1c);
+            color: #fbbf24;
+            font-size: 1.25rem;
+            font-weight: bold;
+            z-index: 2;
+        }
+
+        .slot-back {
+            background: #fffbeb;
+            color: #1f2937;
+            /* 翻转180度预设，确保父级翻转后正向 */
+            transform: rotateY(180deg); 
+            z-index: 1;
+        }
+
+        .winner-animation .slot-inner {
+            animation: celebrate 0.5s ease-out infinite alternate;
+        }
+
+        @keyframes celebrate {
+            from { transform: rotateY(180deg) scale(1); }
+            to { transform: rotateY(180deg) scale(1.08); box-shadow: 0 0 15px #f59e0b; }
+        }
+
+        .confetti {
+            position: fixed;
+            width: 8px;
+            height: 8px;
+            pointer-events: none;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center py-8 px-4">
+
+    <!-- Header -->
+    <div class="text-center mb-6">
+        <h1 class="text-5xl font-black text-yellow-400 drop-shadow-lg mb-2 italic">LUCKY 36</h1>
+        <p class="text-red-200 text-lg">官方真实概率 · 5个中奖号码版</p>
+    </div>
+
+    <!-- Main Ticket -->
+    <div class="bg-red-600 p-1 rounded-3xl shadow-2xl w-full max-w-xl border-4 border-yellow-500">
+        <div class="bg-white rounded-2xl p-4 sm:p-6">
+            
+            <!-- Winning Numbers Section (5 Numbers) -->
+            <div class="mb-6 bg-red-50 p-4 rounded-xl border-2 border-dashed border-red-200">
+                <h2 class="text-center text-red-600 font-bold mb-3 uppercase tracking-widest text-xs">中奖号码</h2>
+                <div id="winning-numbers" class="flex justify-center gap-2 sm:gap-3 flex-wrap">
+                    <!-- JS 生成 5 个号码 -->
+                </div>
+            </div>
+
+            <!-- 36 Chances Grid -->
+            <div class="mb-6">
+                <div class="flex justify-between items-center mb-3">
+                    <h2 class="text-gray-800 font-bold text-sm sm:text-base">你的号码 (36次中奖机会)</h2>
+                    <span id="reveal-all" class="text-xs text-red-600 cursor-pointer hover:underline font-bold">一键全开</span>
+                </div>
+                <div id="lottery-grid" class="number-grid">
+                    <!-- 36个格子 -->
+                </div>
+            </div>
+
+            <!-- Summary -->
+            <div class="flex flex-col sm:flex-row gap-4 items-center justify-between border-t pt-6 mt-2">
+                <div class="flex gap-6 sm:gap-8 text-center sm:text-left">
+                    <div>
+                        <p class="text-gray-400 text-[10px] uppercase font-sans">累计成本 (¥10/张)</p>
+                        <p class="text-3xl font-black text-gray-700 font-sans">¥ <span id="total-cost">0</span></p>
+                    </div>
+                    <div>
+                        <p class="text-gray-400 text-[10px] uppercase font-sans">累计总收益</p>
+                        <p class="text-3xl font-black text-yellow-500 font-sans drop-shadow-sm">¥ <span id="session-total-prize">0</span></p>
+                    </div>
+                </div>
+                <button id="reset-game" class="bg-yellow-500 hover:bg-yellow-600 text-red-900 font-black px-10 py-3 rounded-xl transition-all transform active:scale-95 shadow-md disabled:opacity-60 disabled:cursor-not-allowed disabled:active:scale-100 disabled:hover:bg-yellow-500">
+                    换一张票
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const winningNumbersEl = document.getElementById('winning-numbers');
+        const gridEl = document.getElementById('lottery-grid');
+        const totalCostEl = document.getElementById('total-cost');
+        const sessionTotalPrizeEl = document.getElementById('session-total-prize');
+        const resetBtn = document.getElementById('reset-game');
+        const revealAllBtn = document.getElementById('reveal-all');
+
+        let winningNumbers = [];
+        let totalCost = 0;
+        let sessionTotalWinnings = 0;
+        let openedCount = 0;
+
+        const PRIZE_WEIGHTS = [
+            { value: 10, weight: 700 },
+            { value: 20, weight: 80 },
+            { value: 50, weight: 15 },
+            { value: 100, weight: 4 },
+            { value: 500, weight: 0.8 },
+            { value: 1000, weight: 0.2 }
+        ];
+
+        function getWeightedPrize() {
+            const total = PRIZE_WEIGHTS.reduce((acc, p) => acc + p.weight, 0);
+            let r = Math.random() * total;
+            for (const p of PRIZE_WEIGHTS) {
+                if (r < p.weight) return p.value;
+                r -= p.weight;
+            }
+            return 5;
+        }
+
+        function initGame() {
+            resetBtn.disabled = true;
+            winningNumbers = [];
+            totalCost += 10;
+            openedCount = 0;
+            totalCostEl.innerText = totalCost.toLocaleString();
+            winningNumbersEl.innerHTML = '';
+            gridEl.innerHTML = '';
+
+            // 生成 5 个中奖号码 (增加到5个)
+            while(winningNumbers.length < 5) {
+                let r = Math.floor(Math.random() * 80) + 1;
+                if(!winningNumbers.includes(r)) winningNumbers.push(r);
+            }
+
+            winningNumbers.forEach(num => {
+                const div = document.createElement('div');
+                div.className = 'w-9 h-9 sm:w-12 sm:h-12 rounded-full bg-red-600 text-yellow-300 flex items-center justify-center font-bold text-lg sm:text-xl shadow-inner border-2 border-yellow-500';
+                div.innerText = num;
+                winningNumbersEl.appendChild(div);
+            });
+
+            // 保持原本的中奖概率逻辑
+            let winCount = 0;
+            const luckFactor = Math.random();
+            if (luckFactor < 0.75) {
+                winCount = Math.random() < 0.2 ? 1 : 0; 
+            } else if (luckFactor < 0.95) {
+                winCount = Math.floor(Math.random() * 2) + 1; 
+            } else {
+                winCount = Math.floor(Math.random() * 3) + 2; 
+            }
+
+            let winIndices = new Set();
+            while(winIndices.size < winCount) {
+                winIndices.add(Math.floor(Math.random() * 36));
+            }
+
+            for (let i = 0; i < 36; i++) {
+                const isWinner = winIndices.has(i);
+                createSlot(i, isWinner);
+            }
+        }
+
+        function createSlot(index, isWinner) {
+            const slot = document.createElement('div');
+            slot.className = 'number-slot';
+            
+            let myNumber;
+            if (isWinner) {
+                myNumber = winningNumbers[Math.floor(Math.random() * winningNumbers.length)];
+            } else {
+                do {
+                    myNumber = Math.floor(Math.random() * 80) + 1;
+                } while (winningNumbers.includes(myNumber));
+            }
+
+            const prize = getWeightedPrize();
+
+            slot.innerHTML = `
+                <div class="slot-inner" onclick="flipSlot(this, ${myNumber}, ${isWinner}, ${prize})">
+                    <div class="slot-front">?</div>
+                    <div class="slot-back">
+                        <div class="flex flex-col items-center justify-center">
+                            <span class="text-base sm:text-lg font-black ${isWinner ? 'text-red-600' : 'text-gray-800'}">${myNumber}</span>
+                            <span class="text-[9px] text-gray-400 font-sans mt-0.5">¥${prize}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+            gridEl.appendChild(slot);
+        }
+
+        function flipSlot(element, num, isWinner, prize) {
+            const parent = element.closest('.number-slot');
+            if (parent.classList.contains('flipped')) return;
+
+            parent.classList.add('flipped');
+            openedCount++;
+
+            if (openedCount === 36) {
+                resetBtn.disabled = false;
+            }
+
+            if (isWinner) {
+                sessionTotalWinnings += prize;
+                animateValue(sessionTotalPrizeEl, parseInt(sessionTotalPrizeEl.innerText.replace(/,/g, '')) || 0, sessionTotalWinnings, 500);
+                parent.classList.add('winner-animation');
+                createConfetti();
+            }
+        }
+
+        function animateValue(obj, start, end, duration) {
+            let startTimestamp = null;
+            const step = (timestamp) => {
+                if (!startTimestamp) startTimestamp = timestamp;
+                const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+                const current = Math.floor(progress * (end - start) + start);
+                obj.innerHTML = current.toLocaleString();
+                if (progress < 1) {
+                    window.requestAnimationFrame(step);
+                }
+            };
+            window.requestAnimationFrame(step);
+        }
+
+        function revealAll() {
+            const slots = document.querySelectorAll('.slot-inner');
+            let delay = 0;
+            slots.forEach((slot) => {
+                setTimeout(() => {
+                    slot.click();
+                }, delay);
+                delay += 30;
+            });
+        }
+
+        function createConfetti() {
+            const colors = ['#fbbf24', '#f87171', '#34d399', '#60a5fa', '#f472b6'];
+            for (let i = 0; i < 12; i++) {
+                const c = document.createElement('div');
+                c.className = 'confetti';
+                c.style.left = (Math.random() * 100) + 'vw';
+                c.style.top = '100vh';
+                c.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+                document.body.appendChild(c);
+
+                c.animate([
+                    { transform: 'translateY(0) rotate(0deg)', opacity: 1 },
+                    { transform: `translateY(-100vh) translateX(${(Math.random() - 0.5) * 100}px) rotate(${Math.random() * 720}deg)`, opacity: 0 }
+                ], {
+                    duration: 1200,
+                    easing: 'ease-out'
+                }).onfinish = () => c.remove();
+            }
+        }
+
+        resetBtn.addEventListener('click', initGame);
+        revealAllBtn.addEventListener('click', revealAll);
+
+        window.onload = initGame;
+    </script>
+</body>
+</html>
